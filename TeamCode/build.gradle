@@ -1,12 +1,15 @@
-// FTC Fast Load, ported to SDK 12 / AGP 8.13 / Gradle 9 (source: ../../fast-load-sdk12).
-// Published to the local Maven repo (~/.m2) with `./gradlew publishToMavenLocal` in each module.
+// Sloth hot reload (https://github.com/Dairy-Foundation/Sloth): the Load plugin adds the
+// deploySloth / removeSlothRemote Gradle tasks. Keep this version equal to the Sloth library below.
 buildscript {
     repositories {
-        mavenLocal()
         mavenCentral()
+        google()
+        maven {
+            url "https://repo.dairy.foundation/releases"
+        }
     }
     dependencies {
-        classpath 'org.team11260:fast-load-plugin:0.1.4-sdk12'
+        classpath "dev.frozenmilk:Load:0.3.2"
     }
 }
 
@@ -34,10 +37,13 @@ def usePedro = true
 // Include common definitions from above.
 apply from: '../build.common.gradle'
 apply from: '../build.dependencies.gradle'
-apply plugin: 'org.team11260.fast-load-plugin'
+apply plugin: 'dev.frozenmilk.sinister.sloth.load'
 
 repositories {
-    mavenLocal()
+    // Dairy releases: Sloth (and Sinister, which Pedro's tuning also uses).
+    maven {
+        url = "https://repo.dairy.foundation/releases"
+    }
 }
 
 android {
@@ -60,8 +66,6 @@ android {
 
 if (usePedro) {
     repositories {
-        // Pedro's tuning UI depends on Sloth/Sinister, which are only published here.
-        maven { url = 'https://repo.dairy.foundation/releases/' }
         // Panels.
         maven { url = 'https://mymaven.bylazar.com/releases' }
     }
@@ -69,7 +73,7 @@ if (usePedro) {
 
 dependencies {
     implementation project(':FtcRobotController')
-    implementation 'org.team11260:fast-load:0.1.4-sdk12'
+    implementation "dev.frozenmilk.sinister:Sloth:0.3.2"   // keep equal to the Load plugin above
 
     if (usePedro) {
         // Latest releases as of 2026-11-19.

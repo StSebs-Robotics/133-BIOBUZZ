@@ -1,3 +1,15 @@
+// FTC Fast Load, ported to SDK 12 / AGP 8.13 / Gradle 9 (source: ../../fast-load-sdk12).
+// Published to the local Maven repo (~/.m2) with `./gradlew publishToMavenLocal` in each module.
+buildscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'org.team11260:fast-load-plugin:0.1.4-sdk12'
+    }
+}
+
 apply plugin: 'com.android.application'
 
 //
@@ -12,9 +24,21 @@ apply plugin: 'com.android.application'
 
 // Custom definitions may go here
 
+// ---------------------------------------------------------------------------------------------
+// Pedro Pathing + Panels switch. While true, the build includes the full Pedro 3 suite and Panels,
+// and compiles everything under src/pedro/java (Constants, tuners, Pedro TeleOp). Set to false
+// to build without any of it. See src/pedro/README.md for the setup checklist.
+// ---------------------------------------------------------------------------------------------
+def usePedro = true
+
 // Include common definitions from above.
 apply from: '../build.common.gradle'
 apply from: '../build.dependencies.gradle'
+apply plugin: 'org.team11260.fast-load-plugin'
+
+repositories {
+    mavenLocal()
+}
 
 android {
     namespace = 'org.firstinspires.ftc.teamcode'
@@ -22,8 +46,42 @@ android {
     packagingOptions {
         jniLibs.useLegacyPackaging true
     }
+
+    if (usePedro) {
+        // The Pedro Quickstart builds against SDK 34 (the FTC default here is 30).
+        compileSdk 34
+        sourceSets {
+            main {
+                java.srcDirs += 'src/pedro/java'
+            }
+        }
+    }
+}
+
+if (usePedro) {
+    repositories {
+        // Pedro's tuning UI depends on Sloth/Sinister, which are only published here.
+        maven { url = 'https://repo.dairy.foundation/releases/' }
+        // Panels.
+        maven { url = 'https://mymaven.bylazar.com/releases' }
+    }
 }
 
 dependencies {
     implementation project(':FtcRobotController')
+    implementation 'org.team11260:fast-load:0.1.4-sdk12'
+
+    if (usePedro) {
+        // Latest releases as of 2026-11-19.
+        // Pedro 3 (Maven Central). revhub pulls in com.pedropathing:core at the same version.
+        // Do NOT add com.pedropathing:ftc: that is the old Pedro 2 library and conflicts with core 3.
+        implementation 'com.pedropathing:revhub:3.0.2'      // drivetrains + localizers
+        implementation 'com.pedropathing:tuning:1.0.3'      // auto-tuning web UI (port 10158)
+        implementation 'com.pedropathing:ivy:1.0.0'         // command scheduler
+        implementation 'com.pedropathing:telemetry:1.0.0'   // selectable on-robot menus
+
+        // Panels: every plugin (telemetry, graph, field, configurables, gamepad, camera, ...).
+        // Dashboard at http://192.168.43.1:8001 when connected to the robot's Wi-Fi.
+        implementation 'com.bylazar:fullpanels:1.0.20'
+    }
 }

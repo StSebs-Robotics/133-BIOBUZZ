@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Launcher Log Plot</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1f24; --muted:#6b7280; --grid:#e5e7eb; --target:#9ca3af; --vel:#2563eb; --est:#f59e0b; --pow:#16a34a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111418; --fg:#e5e7eb; --muted:#9ca3af; --grid:#262b33; --target:#6b7280; --vel:#60a5fa; --est:#fbbf24; --pow:#4ade80; } }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:14px system-ui, sans-serif; }
+  #drop { border:2px dashed var(--grid); border-radius:8px; padding:18px; text-align:center; color:var(--muted); cursor:pointer; }
+  canvas { width:100%; display:block; margin-top:12px; }
+  .legend span { margin-right:14px; white-space:nowrap; } .legend i { display:inline-block; width:14px; height:3px; vertical-align:middle; margin-right:5px; }
+  #info { color:var(--muted); margin-top:8px; }
+</style>
+</head>
+<body>
+<div id="drop">Drop a launcher CSV here (from <code>adb pull /sdcard/FIRST/launcher/</code> or <code>sim.sh run --csv</code>), or click to choose.
+  <input id="file" type="file" accept=".csv" hidden></div>
+<div class="legend" id="legend"></div>
+<canvas id="c1" height="340"></canvas>
+<canvas id="c2" height="170"></canvas>
+<div id="info">Scroll to zoom time, drag to pan, double-click to reset.</div>
+<script>
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let data = null, view = null;
+const drop = document.getElementById('drop'), file = document.getElementById('file');
+drop.onclick = () => file.click();
+file.onchange = e => load(e.target.files[0]);
+drop.ondragover = e => { e.preventDefault(); };
+drop.ondrop = e => { e.preventDefault(); load(e.dataTransfer.files[0]); };
+function load(f) { if (!f) return; f.text().then(txt => { parse(txt); drop.textContent = f.name; }); }
+function parse(txt) {
+  const lines = txt.trim().split(/\r?\n/), head = lines[0].split(',').map(s => s.trim());
+  const cols = {}; head.forEach((h, i) => cols[h] = []);
+  for (let i = 1; i < lines.length; i++) { const p = lines[i].split(','); head.forEach((h, k) => cols[h].push(+p[k])); }
+  const t0 = cols.t[0]; cols.t = cols.t.map(x => x - t0);
+  data = cols; view = [0, cols.t[cols.t.length - 1]]; draw();
+}
+function series(ctx, W, H, pad, t, ys, color, lo, hi) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); let first = true;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] < view[0] || t[i] > view[1]) continue;
+    const x = pad + (t[i] - view[0]) / (view[1] - view[0]) * (W - 2 * pad);
+    const y = H - pad - (ys[i] - lo) / (hi - lo) * (H - 2 * pad);
+    first ? ctx.moveTo(x, y) : ctx.lineTo(x, y); first = false;
+  }
+  ctx.stroke();
+}
+function panel(canvas, specs, label) {
+  const dpr = window.devicePixelRatio || 1, W = canvas.clientWidth, H = +canvas.getAttribute('height');
+  canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
+  const pad = 40; let lo = Infinity, hi = -Infinity;
+  for (const s of specs) data[s.k] && data[s.k].forEach((v, i) => { const t = data.t[i]; if (t >= view[0] && t <= view[1]) { lo = Math.min(lo, v); hi = Math.max(hi, v); } });
+  if (!isFinite(lo)) return; if (hi - lo < 1e-9) { hi += 1; lo -= 1; } const m = (hi - lo) * 0.05; lo -= m; hi += m;
+  ctx.strokeStyle = css('--grid'); ctx.fillStyle = css('--muted'); ctx.font = '11px system-ui'; ctx.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { const y = pad + k * (H - 2 * pad) / 4; ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W - pad, y); ctx.stroke(); ctx.fillText((hi - k * (hi - lo) / 4).toPrecision(4), 2, y + 4); }
+  for (let k = 0; k <= 6; k++) { const x = pad + k * (W - 2 * pad) / 6; ctx.fillText((view[0] + k * (view[1] - view[0]) / 6).toFixed(2) + 's', x - 12, H - pad + 16); }
+  ctx.fillText(label, pad, 14);
+  for (const s of specs) if (data[s.k]) series(ctx, W, H, pad, data.t, data[s.k], css(s.c), lo, hi);
+}
+const topSeries = [{k:'target',c:'--target',n:'target'},{k:'velocity',c:'--vel',n:'velocity'},{k:'estimate',c:'--est',n:'Kalman estimate'}];
+const powerSeries = [{k:'power',c:'--pow',n:'power'}];
+function draw() {
+  if (!data) return;
+  document.getElementById('legend').innerHTML = [...topSeries, ...powerSeries]
+    .map(s => `<span><i style="background:${css(s.c)}"></i>${s.n}</span>`).join('');
+  panel(document.getElementById('c1'), topSeries, 'velocity (ticks/s)');
+  panel(document.getElementById('c2'), powerSeries, 'power');
+}
+for (const c of [document.getElementById('c1'), document.getElementById('c2')]) {
+  c.addEventListener('wheel', e => { if (!data) return; e.preventDefault(); const r = c.getBoundingClientRect(), f = (e.clientX - r.left - 40) / (r.width - 80);
+    const at = view[0] + f * (view[1] - view[0]), z = e.deltaY > 0 ? 1.2 : 1 / 1.2; view = [at - (at - view[0]) * z, at + (view[1] - at) * z]; draw(); }, {passive:false});
+  let drag = null;
+  c.onmousedown = e => drag = {x: e.clientX, v: view.slice()};
+  window.addEventListener('mouseup', () => drag = null);
+  window.addEventListener('mousemove', e => { if (!drag) return; const w = c.getBoundingClientRect().width - 80, d = (e.clientX - drag.x) / w * (drag.v[1] - drag.v[0]); view = [drag.v[0] - d, drag.v[1] - d]; draw(); });
+  c.ondblclick = () => { if (data) { view = [0, data.t[data.t.length - 1]]; draw(); } };
+}
+window.onresize = draw;
+</script>
+</body>
+</html>

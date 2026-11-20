@@ -14,6 +14,6 @@ src="$root/TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/laun
 out="$root/build/launcher-sim"
 mkdir -p "$out"
 javac -d "$out" \
-  "$src/LauncherParams.java" "$src/MpcCore.java" "$src/SysIdFit.java" "$src/StepAnalyzer.java" "$src/TuneScore.java" \
+  "$src/LauncherParams.java" "$src/MpcCore.java" "$src/SysIdFit.java" "$src/StepAnalyzer.java" "$src/TuneScore.java" "$src/AutoTuner.java" "$src/AutoTuneTrial.java" \
   "$here/LauncherSim.java"
 exec java -cp "$out" LauncherSim "$@"

@@ -149,6 +149,11 @@ public class LauncherMPC {
     private volatile boolean running = true;
     private volatile Throwable error;
     private volatile boolean resetObserver = false;
+    private volatile long virtualShotUntilNs = 0;
+    private volatile long notifyNs = 0;
+    // learned shot timing, published by the control thread
+    private volatile double shotLead = 0, shotDrop = 0;
+    private volatile int shotLearnCount = 0;
 
     // ---- log ring buffer (guarded by logLock)
     private final Object logLock = new Object();
@@ -253,6 +258,34 @@ public class LauncherMPC {
         return s != null && s.ready;
     }
 
+    /**
+     * Optional: call at the moment your code pushes a ball toward the wheel (when you command the
+     * feeder). You don't need to know how long the ball takes to arrive: the first
+     * {@link MpcCore#LEARN_SHOTS} notified balls are timed and measured, and from then on the
+     * controller starts recovering just before each ball hits, so the dip is smaller and shorter.
+     * The learned timing is saved with the params (saveParams / the tuners), so it is learned once.
+     *
+     * Call it once per ball. If a ball never arrives (jam), it is forgotten after 1 s.
+     */
+    public void notifyShot() {
+        notifyNs = System.nanoTime();
+    }
+
+    /** Learned time from notifyShot() to the ball hitting the wheel, s (0 = not learned yet). */
+    public double getShotLeadSec() {
+        return shotLead;
+    }
+
+    /** Learned speed lost per ball, fraction of speed (0 = not learned yet). */
+    public double getShotDropFrac() {
+        return shotDrop;
+    }
+
+    /** Notified balls measured so far; the feed-forward starts at {@link MpcCore#LEARN_SHOTS}. */
+    public int getShotLearnCount() {
+        return shotLearnCount;
+    }
+
     /** Balls detected going through the launcher (from the speed dips) since creation. */
     public int getShotCount() {
         State s = state;
@@ -291,10 +324,18 @@ public class LauncherMPC {
     // Parameters
     // =============================================================================================
 
-    /** A copy of the active parameters; change it and pass it to {@link #setParams}. */
+    /**
+     * A copy of the active parameters; change it and pass it to {@link #setParams}. Includes the
+     * learned notifyShot() timing, so saving it keeps what was learned.
+     */
     public LauncherParams getParams() {
         LauncherParams p = pendingParams;
-        return (p != null ? p : params).copy();
+        LauncherParams c = (p != null ? p : params).copy();
+        if (shotLearnCount > 0 && shotDrop > 0) {
+            c.shotLeadSec = shotLead;
+            c.shotDropFrac = shotDrop;
+        }
+        return c;
     }
 
     /** Applied by the control thread at the start of its next loop. */
@@ -308,6 +349,14 @@ public class LauncherMPC {
 
     public void saveParams(String comment) throws IOException {
         getParams().save(paramsFile, comment);
+    }
+
+    /**
+     * Test tool (used by Launcher Auto-Tune): cut the motor for {@code seconds} without telling the
+     * controller, so it sees a speed loss it cannot explain — the same thing a ball does.
+     */
+    public void virtualShot(double seconds) {
+        virtualShotUntilNs = System.nanoTime() + (long) (seconds * 1e9);
     }
 
     /** Re-initialise the Kalman estimate from the next measurement (e.g. after changing the model). */
@@ -442,6 +491,14 @@ public class LauncherMPC {
                 boolean arm = m == Mode.VELOCITY && tgt > 0
                         && Math.abs(core.getVelocityEstimate() - tgt) < 3 * Math.max(p.readyTolFrac * tgt, p.readyTolMin);
                 core.observe(vel, dt, arm);
+                long nn = notifyNs;
+                if (nn != 0) {
+                    notifyNs = 0;
+                    core.notifyShot(Math.max(0, now - nn) / 1e9);
+                }
+                shotLead = core.getShotLead();
+                shotDrop = core.getShotDrop();
+                shotLearnCount = core.getShotLearnCount();
 
                 double u;
                 long solveStart = System.nanoTime();
@@ -458,7 +515,10 @@ public class LauncherMPC {
                 double solveMs = (System.nanoTime() - solveStart) / 1e6;
                 lastMode = m;
 
-                for (CachedMotor cm : cached) cm.setPower(u, battery);
+                // Virtual shot (auto-tune): cut the motor but let the controller believe u was sent,
+                // so it sees an unexplained speed loss like a real ball.
+                double sent = now < virtualShotUntilNs ? 0 : u;
+                for (CachedMotor cm : cached) cm.setPower(sent, battery);
                 core.commit(u, battery);
                 lastU = u;
 

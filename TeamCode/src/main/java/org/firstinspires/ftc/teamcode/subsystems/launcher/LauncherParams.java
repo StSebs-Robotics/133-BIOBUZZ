@@ -52,8 +52,13 @@ public class LauncherParams {
     public double qTerminal = 5.0;
     /** Weight on power changes. Higher = smoother, slower; lower = snappier, noisier. */
     public double rDu = 0.05;
-    /** Power limits. uMin 0 = coast to slow down; a small negative value brakes harder. */
-    public double uMin = 0.0;
+    /**
+     * Power limits. A negative uMin lets the MPC brake (drive backwards) when slowing down; 0 =
+     * coast only. Keep it small: reverse power on a fast-spinning flywheel draws a lot of current
+     * (the motor's back-EMF adds to the battery). Keep the motor on FLOAT, never BRAKE mode: BRAKE
+     * slows it in a way the model doesn't know about.
+     */
+    public double uMin = -0.15;
     public double uMax = 1.0;
     /** Optional limit on power change per second applied after the MPC (0 = off). */
     public double maxDuPerSec = 0.0;

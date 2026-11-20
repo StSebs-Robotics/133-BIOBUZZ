@@ -75,6 +75,17 @@ public class LauncherParams {
      */
     public double shotDetectSigma = 3;
 
+    // ---------------------------------------------------------------- shot feed-forward (notifyShot)
+    /**
+     * How much of the expected dip to plan for when your code calls launcher.notifyShot().
+     * 1 = all of it, 0 = off. Only used once the timing has been learned.
+     */
+    public double shotFeedforward = 1.0;
+    /** Learned: time from notifyShot() to the ball hitting the wheel, s. 0 = not learned yet. */
+    public double shotLeadSec = 0;
+    /** Learned: speed lost per ball, fraction of speed. 0 = not learned yet. */
+    public double shotDropFrac = 0;
+
     // ---------------------------------------------------------------- "ready to shoot"
     /** Ready when |error| &lt; max(readyTolFrac * target, readyTolMin) ... */
     public double readyTolFrac = 0.02;
@@ -118,6 +129,9 @@ public class LauncherParams {
         c.velNoise = Math.max(c.velNoise, 1e-3);
         c.loadNoise = Math.max(c.loadNoise, 0);
         c.shotDetectSigma = Math.max(c.shotDetectSigma, 0);
+        c.shotFeedforward = Math.max(0, Math.min(c.shotFeedforward, 2));
+        c.shotLeadSec = Math.max(0, Math.min(c.shotLeadSec, 1));
+        c.shotDropFrac = Math.max(0, Math.min(c.shotDropFrac, 0.6));
         return c;
     }
 

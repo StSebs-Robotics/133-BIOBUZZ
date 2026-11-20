@@ -71,6 +71,11 @@ public final class MpcCore {
         }
         if (p.horizonSteps != n) allocate(p.horizonSteps);
         computeKalmanGains(ts);
+        if (learnCount == 0 && p.shotLeadSec > 0 && p.shotDropFrac > 0) { // learned on an earlier run
+            learnedLead = p.shotLeadSec;
+            learnedDrop = p.shotDropFrac;
+            learnCount = LEARN_SHOTS;
+        }
     }
 
     public LauncherParams getParams() {
@@ -110,9 +115,13 @@ public final class MpcCore {
             return;
         }
         double dt = Math.max(1e-4, Math.min(dtSec, 0.1));
+        tCore += dt;
         double a = Math.exp(-dt / p.tau);
         double vPred = predict(vHat, hist[0], loadHat, a);
         double innov = measuredVel - vPred;
+        // 3-sample average of the encoder, for measuring how deep a shot's dip went
+        avg3[avgIdx++ % 3] = measuredVel;
+        double vAvg = (avg3[0] + avg3[1] + avg3[2]) / 3;
 
         // Shot detection (one-sided CUSUM on "slower than the model says"). A ball going through is
         // a sudden loss of speed, not a lasting load: without this the filter blames the drop on
@@ -120,7 +129,11 @@ public final class MpcCore {
         boolean wasShot = shotActive;
         if (p.shotDetectSigma > 0 && (armShotDetect || shotActive)) {
             double z = -innov / p.measNoise;           // > 0 when slower than predicted
-            if (cusum == 0 && z > 1) loadBeforeCusum = loadHat;
+            if (cusum == 0 && z > 1) {             // speed just started falling too fast
+                loadBeforeCusum = loadHat;
+                cusumStartT = tCore - dt;
+                cusumStartV = vHat;
+            }
             cusum = Math.max(0, cusum + z - 1);        // drift 1σ: robust if measNoise is a bit low
             if (!shotActive && cusum > p.shotDetectSigma) {
                 shotActive = true;
@@ -128,20 +141,33 @@ public final class MpcCore {
                 calmSamples = 0;
                 shotCount++;
                 loadHat = loadBeforeCusum;            // undo what the drop already did to the load
+                shotMinV = vAvg;
+                // a shot we were told about: measure how long the ball took from notifyShot()
+                learningShot = notifyPending && cusumStartT - tNotify < NOTIFY_WINDOW_SEC;
+                measuredLead = Math.max(0, cusumStartT - tNotify);
+                notifyPending = false;
             }
             if (shotActive) {
                 shotTime += dt;
+                shotMinV = Math.min(shotMinV, vAvg);
                 calmSamples = z < 1 ? calmSamples + 1 : 0;
                 // ball gone once the speed stops falling; never stay "in a shot" for long, or a
                 // real load change could never be learned
                 if (calmSamples >= 2 || shotTime > MAX_SHOT_SEC) {
                     shotActive = false;
                     cusum = 0;
+                    if (learningShot && cusumStartV > 0) {
+                        learnShot(measuredLead, (cusumStartV - shotMinV) / cusumStartV);
+                    }
+                    learningShot = false;
                 }
             }
         } else {
             cusum = 0;
         }
+        // told about a shot that never came (jam, missed feed): forget it
+        if (notifyPending && !shotActive && tCore - tNotify > NOTIFY_WINDOW_SEC) notifyPending = false;
+
         if (shotActive || wasShot) {
             vHat = measuredVel;                          // speed jumped: follow the encoder, keep load
         } else {
@@ -157,6 +183,59 @@ public final class MpcCore {
     private double cusum = 0, loadBeforeCusum = 0, shotTime = 0;
     private boolean shotActive = false;
     private int calmSamples = 0, shotCount = 0;
+
+    // ---- shot feed-forward (notifyShot)
+    /** A notified ball must arrive within this long, or it is forgotten (jam / missed feed). */
+    private static final double NOTIFY_WINDOW_SEC = 1.0;
+    private double tCore = 0, tNotify = 0, cusumStartT = 0, cusumStartV = 0, shotMinV = 0, measuredLead = 0;
+    private boolean notifyPending = false, learningShot = false;
+    private final double[] avg3 = new double[3];
+    private int avgIdx = 0;
+    private double learnedLead = 0, learnedDrop = 0;
+    private int learnCount = 0;
+
+    /**
+     * The code just pushed a ball toward the wheel (call at the moment the feeder is commanded).
+     * The first few notified shots only measure how long the ball takes to reach the wheel and how
+     * much speed it costs; after {@link #LEARN_SHOTS} the MPC is told about each coming dip in
+     * advance and starts the recovery early.
+     *
+     * @param secondsAgo how long ago the feeder was commanded (0 = now)
+     */
+    public void notifyShot(double secondsAgo) {
+        tNotify = tCore - Math.max(0, secondsAgo);
+        notifyPending = true;
+    }
+
+    /** Notified shots needed before the feed-forward is used. */
+    public static final int LEARN_SHOTS = 2;
+
+    private void learnShot(double lead, double drop) {
+        drop = Math.max(0, Math.min(0.6, drop));
+        lead = Math.max(0, Math.min(NOTIFY_WINDOW_SEC, lead));
+        // average of the first few, then a moving average so it follows slow changes
+        double alpha = learnCount < 4 ? 1.0 / (learnCount + 1) : 0.3;
+        learnedLead += alpha * (lead - learnedLead);
+        learnedDrop += alpha * (drop - learnedDrop);
+        learnCount++;
+    }
+
+    /** Learned time from notifyShot() to the ball hitting the wheel, s (0 until learned). */
+    public double getShotLead() { return learnedLead; }
+
+    /** Learned speed lost per ball, fraction of speed (0 until learned). */
+    public double getShotDrop() { return learnedDrop; }
+
+    /** Notified shots measured so far (values from the params file count as {@link #LEARN_SHOTS}). */
+    public int getShotLearnCount() { return learnCount; }
+
+    /** A notified ball is on its way and has not hit the wheel yet. */
+    public boolean isShotPending() { return notifyPending; }
+
+    /** True once the feed-forward has enough to act on. */
+    public boolean isShotFeedforwardReady() {
+        return p.shotFeedforward > 0 && learnCount >= LEARN_SHOTS && learnedDrop > 0;
+    }
 
     /** True while a ball is going through (speed dropping faster than the model allows). */
     public boolean isShotActive() { return shotActive; }
@@ -229,11 +308,29 @@ public final class MpcCore {
         double c = -(1 - a) * (p.kS + loadHat);
         double invKv2 = 1.0 / (p.kV * p.kV);
 
+        // Shot feed-forward. dipAt = when the notified ball is expected to hit, relative to the
+        // moment this command takes effect (x0 is already delaySteps ahead of now).
+        // Only used once the command lands at or after contact (dipAt < one period): planning for
+        // the dip any earlier just spins the wheel up before the ball arrives, and that ball then
+        // leaves too fast. The physics allows nothing better: a ball takes ~10% of the speed in
+        // ~30 ms, far faster than the motor can add it back. What this does buy is starting the
+        // full recovery push the moment the ball hits, instead of 20–30 ms later when the encoder
+        // shows the drop. Skipped once the shot is actually seen (shotActive).
+        double dipAt = 0, dipSize = 0;
+        if (notifyPending && !shotActive && isShotFeedforwardReady()) {
+            dipAt = tNotify + learnedLead - tCore - delaySteps * ts;
+            if (dipAt > -0.05 && dipAt < ts) dipSize = p.shotFeedforward * learnedDrop * target;
+        }
         // free response s_j (no power), and Toeplitz impulse response G[j][i] = a^(j-i) b
         double sj = x0;
         for (int j = 0; j < n; j++) {
             sj = a * sj + c;
             s[j] = sj;
+            if (dipSize > 0 && (j + 1) * tp >= dipAt) {
+                // known ball coming: the speed will be dipSize lower from dipAt on, decaying like
+                // any other speed error; the MPC plans the power to cover it
+                s[j] -= dipSize * Math.pow(a, ((j + 1) * tp - Math.max(dipAt, 0)) / tp);
+            }
             qw[j] = p.qVel + (j == n - 1 ? p.qTerminal : 0);
         }
         double[] imp = y; // reuse as scratch for impulse response a^k b

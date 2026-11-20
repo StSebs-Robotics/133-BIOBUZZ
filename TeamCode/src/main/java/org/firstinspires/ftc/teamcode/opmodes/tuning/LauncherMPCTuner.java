@@ -29,6 +29,8 @@ import java.util.List;
  *   Y                SAVE params to the Control Hub file
  *   back / share     write CSV log of the last 60 s (plot it with tools/launcher/plot.html)
  *   left bumper      hold for ×10 bigger adjustments
+ *   right bumper     launcher.notifyShot(): press as you push a ball in. To learn the feeder
+ *                    timing properly, call notifyShot() from your feeder code instead.
  *
  * What to do: see subsystems/launcher/README.md ("Tuning recipe").
  */
@@ -66,6 +68,7 @@ public class LauncherMPCTuner extends LinearOpMode {
             new Item("loadNoise", true, 1.25, 0.1, 500, "↑ faster shot recovery & offset fix, ↓ calmer"),
             new Item("measNoise", true, 1.25, 1, 500, "↑ trust encoder less (calmer), ↓ react faster"),
             new Item("shotDetectSigma", false, 0.5, 0, 20, "↓ catches smaller shots, ↑ fewer false alarms, 0 off"),
+            new Item("shotFeedforward", false, 0.1, 0, 2, "notifyShot push at contact: 1 = full, 0 = off"),
             new Item("horizonSec", false, 0.05, 0.05, 3, "look-ahead; ~tau is a good start"),
             new Item("qTerminal", false, 1, 0, 200, "↑ less overshoot at end of horizon"),
             new Item("horizonSteps", false, 1, 2, 60, "QP size; more = finer plan, more CPU"),
@@ -199,6 +202,7 @@ public class LauncherMPCTuner extends LinearOpMode {
             }
 
             // ---------------- save / log
+            if (gamepad1.rightBumperWasPressed()) launcher.notifyShot();
             if (gamepad1.yWasPressed()) {
                 try {
                     launcher.saveParams("LauncherMPCTuner");
@@ -237,6 +241,9 @@ public class LauncherMPCTuner extends LinearOpMode {
                 telemetry.addLine(String.format("power %.3f  load %.0f  batt %.2fV  loop %.1fms  solve %.2fms/%d it",
                         s.power, s.load, s.battery, s.loopMs, s.solveMs, s.iterations));
                 telemetry.addLine(String.format("shots detected %d %s", s.shotCount, s.shotActive ? "← SHOT" : ""));
+                telemetry.addLine(String.format("notifyShot learned: %d shots  lead %.0f ms  drop %.1f%%%s",
+                        launcher.getShotLearnCount(), 1000 * launcher.getShotLeadSec(), 100 * launcher.getShotDropFrac(),
+                        launcher.getShotLearnCount() >= 2 ? "  (active)" : ""));
             }
             if (launcher.getError() != null) telemetry.addLine("CONTROL THREAD DIED: " + launcher.getError());
             if (phase != Auto.NONE) telemetry.addLine("AUTO TEST: " + phase + (phase == Auto.HIGH2 ? "  ← feed balls now" : ""));

@@ -1,3 +1,5 @@
+import org.firstinspires.ftc.teamcode.subsystems.launcher.AutoTuneTrial;
+import org.firstinspires.ftc.teamcode.subsystems.launcher.AutoTuner;
 import org.firstinspires.ftc.teamcode.subsystems.launcher.LauncherParams;
 import org.firstinspires.ftc.teamcode.subsystems.launcher.MpcCore;
 import org.firstinspires.ftc.teamcode.subsystems.launcher.StepAnalyzer;
@@ -30,11 +32,14 @@ import java.util.Random;
  *   --target T     high target, ticks/s (default 80% of max)
  *   --noise S      encoder noise std-dev, ticks/s (default 15)
  *   --seed N
+ *   --notify L     call notifyShot() L seconds before each ball hits (±15 ms), timing unknown to the controller
+ *   --bad          (autotune) start from deliberately bad weights to see it recover
+ *   --trials N     (autotune) search budget, default 24
  */
 public class LauncherSim {
 
     // ------------------------------------------------------------------ simulated hardware
-    static final class Plant {
+    public static final class Plant {
         double tau, kV, kS, delaySec, noise, vNom = 12.0;
         double v = 0;
         /** Fraction of speed still to be removed by the ball currently going through, and over how long. */
@@ -43,7 +48,7 @@ public class LauncherSim {
         final ArrayList<double[]> queue = new ArrayList<>(); // {timeEffective, power}
         double powerNow = 0;
 
-        Plant(LauncherParams model, double mismatch, double noise, long seed) {
+        public Plant(LauncherParams model, double mismatch, double noise, long seed) {
             rnd = new Random(seed);
             this.tau = model.tau * (1 + mismatch);
             this.kV = model.kV * (1 - mismatch);
@@ -52,16 +57,16 @@ public class LauncherSim {
             this.noise = noise;
         }
 
-        double battery() {
+        public double battery() {
             return 12.6 - 1.2 * Math.abs(powerNow); // sag under load
         }
 
-        void command(double t, double power) {
+        public void command(double t, double power) {
             queue.add(new double[]{t + delaySec, power});
         }
 
         /** Advance physics from t to t+dt in 0.5 ms substeps. */
-        void advance(double t, double dt) {
+        public void advance(double t, double dt) {
             double h = 0.0005;
             for (double s = 0; s < dt - 1e-9; s += h) {
                 double now = t + s;
@@ -78,7 +83,7 @@ public class LauncherSim {
             }
         }
 
-        double measure() {
+        public double measure() {
             // REV hub reports integer ticks/s
             return Math.round(v + rnd.nextGaussian() * noise);
         }
@@ -92,6 +97,8 @@ public class LauncherSim {
     static final class Scenario {
         double high, low, shotDrop;
         int shots;
+        /** True time from notifyShot() to ball contact (unknown to the controller); NaN = no notify. */
+        double notifyLead = Double.NaN;
     }
 
     static double targetAt(Scenario sc, double t) {
@@ -102,6 +109,8 @@ public class LauncherSim {
         return 0;
     }
 
+    static MpcCore lastCore;
+
     static List<Sample> simulate(LauncherParams params, Scenario sc, Plant plant, long seed, TuneScore score) {
         MpcCore mpc = new MpcCore();
         mpc.setParams(params);
@@ -109,11 +118,18 @@ public class LauncherSim {
         Random jitter = new Random(seed + 7);
         List<Sample> log = new ArrayList<>();
         double t = 0, period = p.periodMs / 1000.0, end = 9.0 + sc.shots * 0.6 + 1.0;
-        int nextShot = 0;
+        int nextShot = 0, nextNotify = 0;
         double dt = period;
+        Random feedJitter = new Random(seed + 3);
+        double[] shotAt = new double[sc.shots];
+        for (int k = 0; k < sc.shots; k++) shotAt[k] = 8.0 + k * 0.6;
+        // each ball's real travel time varies a little (±15 ms)
+        double[] notifyAt = new double[sc.shots];
+        for (int k = 0; k < sc.shots; k++) notifyAt[k] = shotAt[k] - sc.notifyLead + (feedJitter.nextDouble() - 0.5) * 0.03;
+        lastCore = mpc;
         while (t < end) {
             double target = targetAt(sc, t);
-            if (nextShot < sc.shots && t >= 8.0 + nextShot * 0.6) {
+            if (nextShot < sc.shots && t >= shotAt[nextShot]) {
                 plant.shotLeft = sc.shotDrop;
                 plant.shotRate = sc.shotDrop / 0.03; // ~30 ms of ball contact
                 nextShot++;
@@ -124,6 +140,10 @@ public class LauncherSim {
             boolean arm = target > 0 && Math.abs(mpc.getVelocityEstimate() - target)
                     < 3 * Math.max(cp.readyTolFrac * target, cp.readyTolMin);
             mpc.observe(meas, dt, arm);
+            if (!Double.isNaN(sc.notifyLead) && nextNotify < sc.shots && t >= notifyAt[nextNotify]) {
+                mpc.notifyShot(0); // the robot code commands the feeder now
+                nextNotify++;
+            }
             double u;
             if (target > 0) {
                 u = mpc.solve(target, batt);
@@ -153,7 +173,9 @@ public class LauncherSim {
         String mode = args.length > 0 ? args[0] : "run";
         String file = null, csv = null;
         double mismatch = 0.0, shotDrop = 0.12, noise = 15, target = Double.NaN;
-        int shots = 3;
+        int shots = 3, trials = 30;
+        double notifyLead = Double.NaN;
+        boolean bad = false;
         long seed = 1;
         for (int i = 1; i < args.length; i++) {
             switch (args[i]) {
@@ -161,9 +183,12 @@ public class LauncherSim {
                 case "--mismatch": mismatch = Double.parseDouble(args[++i]); break;
                 case "--shots": shots = Integer.parseInt(args[++i]); break;
                 case "--shotDrop": shotDrop = Double.parseDouble(args[++i]); break;
+                case "--notify": notifyLead = Double.parseDouble(args[++i]); break;
                 case "--noise": noise = Double.parseDouble(args[++i]); break;
                 case "--target": target = Double.parseDouble(args[++i]); break;
                 case "--seed": seed = Long.parseLong(args[++i]); break;
+                case "--bad": bad = true; break;
+                case "--trials": trials = Integer.parseInt(args[++i]); break;
                 default: file = args[i];
             }
         }
@@ -175,13 +200,15 @@ public class LauncherSim {
         sc.low = 0.6 * sc.high;
         sc.shots = shots;
         sc.shotDrop = shotDrop;
+        sc.notifyLead = notifyLead;
 
         switch (mode) {
             case "run": run(params, sc, mismatch, noise, seed, csv); break;
             case "sweep": sweep(params, sc, mismatch, noise, seed); break;
             case "sysid": sysid(params, noise, mismatch, seed); break;
+            case "autotune": autotune(params, sc, mismatch, noise, seed, bad, trials); break;
             default:
-                System.out.println("usage: run|sweep|sysid [params.properties] [options]");
+                System.out.println("usage: run|sweep|sysid|autotune [params.properties] [options]");
         }
     }
 
@@ -199,6 +226,11 @@ public class LauncherSim {
         for (StepAnalyzer.Result r : ts.results) System.out.println("  " + r.summary());
         System.out.printf("power chatter %.4f /loop   score %.3f   (%.1f µs per control step here)%n",
                 ts.chatter(), ts.score(), us);
+        if (!Double.isNaN(sc.notifyLead)) {
+            System.out.printf("notifyShot: learned lead %.3f s (true %.3f), drop %.1f%% (true %.0f%%) from %d shots%n",
+                    lastCore.getShotLead(), sc.notifyLead, 100 * lastCore.getShotDrop(), 100 * sc.shotDrop,
+                    lastCore.getShotLearnCount());
+        }
         if (csv != null) {
             try (PrintWriter pw = new PrintWriter(csv)) {
                 pw.println("t,target,velocity,estimate,load,power,battery");
@@ -254,6 +286,72 @@ public class LauncherSim {
     }
 
     /** Simulate the SysId OpMode's open-loop sequence on a known plant and check the fit recovers it. */
+    /**
+     * Run the Launcher Auto-Tune OpMode's search on one continuously running simulated launcher,
+     * exactly as the robot does (same AutoTuner, AutoTuneTrial, MpcCore). Then score the start and
+     * the result on the standard scenario (with shots) as an independent check.
+     */
+    static void autotune(LauncherParams base, Scenario sc, double mismatch, double noise, long seed,
+                         boolean bad, int maxTrials) {
+        LauncherParams start = base.copy();
+        if (bad) {
+            start.rDu = 0.6;
+            start.loadNoise = 0.8;
+            start.measNoise = 8;
+        }
+        Plant plant = new Plant(base, mismatch, noise, seed);
+        MpcCore mpc = new MpcCore();
+        mpc.setParams(start);
+        AutoTuner tuner = new AutoTuner(start, maxTrials);
+        Random jitter = new Random(seed + 11);
+        double t = 0, dt = start.periodMs / 1000.0, high = sc.high, low = 0.85 * high;
+        // spin up to LOW first, like the OpMode
+        double spinEnd = 3.0;
+        LauncherParams cand;
+        double totalSec = 0;
+        while ((cand = tuner.next()) != null) {
+            mpc.setParams(cand);
+            LauncherParams p = mpc.getParams();
+            AutoTuneTrial trial = new AutoTuneTrial(low, high, 1.0, 2, AutoTuneTrial.defaultShotSec(p), p.readyTolFrac, p.readyTolMin);
+            double t0 = t + (spinEnd > 0 ? spinEnd : 0);
+            spinEnd = 0;
+            while (true) {
+                double tt = t - t0;
+                double target = tt < 0 ? low : trial.targetAt(tt);
+                if (tt >= 0 && trial.isDone(tt)) break;
+                double batt = plant.battery();
+                double meas = plant.measure();
+                boolean arm = Math.abs(mpc.getVelocityEstimate() - target)
+                        < 3 * Math.max(p.readyTolFrac * target, p.readyTolMin);
+                mpc.observe(meas, dt, arm);
+                double u = mpc.solve(target, batt);
+                mpc.commit(u, batt);
+                plant.command(t, tt >= 0 && trial.shotActive(tt) ? 0 : u); // virtual shot, as on the robot
+                if (tt >= 0) trial.add(tt, target, meas, u);
+                dt = p.periodMs / 1000.0 + (jitter.nextDouble() - 0.3) * 0.004;
+                plant.advance(t, dt);
+                t += dt;
+            }
+            totalSec = t;
+            tuner.report(trial.score());
+        }
+        for (String h : tuner.history) System.out.println("  " + h);
+        LauncherParams result = tuner.best();
+        System.out.printf("%s after %.0f s of testing (%d trials)%n",
+                tuner.improved() ? "IMPROVED" : "NO CHANGE (start was already best)", totalSec, tuner.history.size());
+        System.out.printf("  start : rDu=%s loadNoise=%s measNoise=%s  trial score %.3f%n",
+                AutoTuner.fmt(start.rDu), AutoTuner.fmt(start.loadNoise), AutoTuner.fmt(start.measNoise), tuner.startScore());
+        System.out.printf("  result: rDu=%s loadNoise=%s measNoise=%s  trial score %.3f%n",
+                AutoTuner.fmt(result.rDu), AutoTuner.fmt(result.loadNoise), AutoTuner.fmt(result.measNoise), tuner.bestScore());
+        // independent check on the full scenario (includes shots, which the trial never sees)
+        for (LauncherParams lp : new LauncherParams[]{start, result}) {
+            TuneScore ts = new TuneScore(lp.readyTolFrac, lp.readyTolMin);
+            simulate(lp, sc, new Plant(base, mismatch, noise, seed + 99), seed + 99, ts);
+            System.out.printf("  %-6s on full scenario with shots: score %.3f chatter %.4f%n",
+                    lp == start ? "start" : "result", ts.score(), ts.chatter());
+        }
+    }
+
     static void sysid(LauncherParams model, double noise, double mismatch, long seed) {
         Plant plant = new Plant(model, mismatch, noise, seed);
         double[] seq = SysIdFit.TEST_POWERS;

@@ -7,7 +7,7 @@ import java.util.List;
  * Grades a run of the launcher with one number (lower is better), identically on the robot
  * (Launcher MPC Tuner) and in the desktop simulator, so sim results and robot results compare.
  *
- * score = Σ steps (IAE + 0.02·overshoot% + 0.01·ssRms [+1 if never settled])
+ * score = Σ steps (IAE + 0.02·overshoot% + 0.01·ssRms [+1 if still off target at the end])
  *       + Σ dips (recovery seconds [1 if not recovered] + 0.05·over-speed% after recovering)
  *       + 20 · chatter
  *
@@ -61,7 +61,9 @@ public final class TuneScore {
             if (r.kind == StepAnalyzer.Result.Kind.STEP) {
                 if (r.to <= 0) continue;
                 sc += r.iae + 0.02 * r.overshootPct + 0.01 * r.ssRms;
-                if (Double.isNaN(r.settleTime)) sc += 1;
+                // "Still off target" uses the RMS error over the end of the window, not the settle
+                // time: settle time is decided by single noisy samples and made scores jumpy.
+                if (r.ssRms > Math.max(tolFrac * r.to, tolMin)) sc += 1;
             } else {
                 sc += (Double.isNaN(r.recoveryTime) ? 1 : r.recoveryTime) + 0.05 * r.dipOvershootPct;
             }

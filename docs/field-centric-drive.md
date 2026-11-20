@@ -6,6 +6,7 @@ Field-centric driving for the mecanum drivetrain. Pushing the left stick up alwa
 |---|---|---|
 | **Field Centric Drive** | [`MecanumDrive`](../TeamCode/src/main/java/org/firstinspires/ftc/teamcode/subsystems/MecanumDrive.java) with the IMU for heading | Works now, needs only the 4 motors and the hub IMU |
 | **Pedro Field Centric Drive** | Pedro Pathing `Follower` with odometry for heading and position | After the odometry pods are mounted and tuned (see [Pedro setup](../TeamCode/src/pedro/README.md)) |
+| **Drive + Launcher** | `MecanumDrive` + the [launcher](launcher.md) on gamepad 2 | Driving and shooting practice; the base for the match TeleOp |
 
 ## Controls (gamepad 1)
 

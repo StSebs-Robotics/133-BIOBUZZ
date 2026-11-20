@@ -14,7 +14,6 @@ import com.pedropathing.revhub.localizers.ThreeWheelIMUConfig;
 import com.pedropathing.revhub.localizers.ThreeWheelIMULocalizer;
 import com.qualcomm.hardware.lynx.LynxModule;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
 import org.firstinspires.ftc.teamcode.subsystems.MecanumDrive;
@@ -37,10 +36,10 @@ public class Constants {
         c.frontRightName.set(MecanumDrive.FRONT_RIGHT);
         c.backLeftName.set(MecanumDrive.BACK_LEFT);
         c.backRightName.set(MecanumDrive.BACK_RIGHT);
-        c.frontLeftDirection.set(DcMotorSimple.Direction.REVERSE);
-        c.frontRightDirection.set(DcMotorSimple.Direction.FORWARD);
-        c.backLeftDirection.set(DcMotorSimple.Direction.REVERSE);
-        c.backRightDirection.set(DcMotorSimple.Direction.FORWARD);
+        c.frontLeftDirection.set(MecanumDrive.FRONT_LEFT_DIR);
+        c.frontRightDirection.set(MecanumDrive.FRONT_RIGHT_DIR);
+        c.backLeftDirection.set(MecanumDrive.BACK_LEFT_DIR);
+        c.backRightDirection.set(MecanumDrive.BACK_RIGHT_DIR);
     });
 
     // ---------------------------------------------------------------------------------------

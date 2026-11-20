@@ -32,11 +32,23 @@ public class MecanumDrive {
     // Configuration — change these to match the robot. Names must match the Driver Station
     // robot configuration exactly.
     // ---------------------------------------------------------------------------------------
+    // Confirmed on the robot: back left = motor0. The others are from the Driver Station config;
+    // check them (and the directions below) with the "Drive Motor Test" OpMode (tuning group).
     public static final String FRONT_LEFT  = "motor1";   // LF
     public static final String FRONT_RIGHT = "motor5";   // RF
     public static final String BACK_LEFT   = "motor0";   // LB
     public static final String BACK_RIGHT  = "motor4";   // RB
     public static final String IMU_NAME    = "imu";
+
+    /**
+     * Directions chosen so that positive power spins every wheel FORWARD (the top of the wheel
+     * moves toward the robot's front). Usually the left side is reversed. Used by this class, the
+     * Pedro constants and the Drive Motor Test, so a fix here applies everywhere.
+     */
+    public static final DcMotorSimple.Direction FRONT_LEFT_DIR  = DcMotorSimple.Direction.REVERSE;
+    public static final DcMotorSimple.Direction FRONT_RIGHT_DIR = DcMotorSimple.Direction.FORWARD;
+    public static final DcMotorSimple.Direction BACK_LEFT_DIR   = DcMotorSimple.Direction.FORWARD;   // checked on the robot: back motors are mounted opposite to the fronts
+    public static final DcMotorSimple.Direction BACK_RIGHT_DIR  = DcMotorSimple.Direction.REVERSE;   // checked on the robot
 
     /** How the Control/Expansion Hub is mounted on the robot. */
     public static final RevHubOrientationOnRobot.LogoFacingDirection HUB_LOGO =
@@ -113,12 +125,10 @@ public class MecanumDrive {
         backLeft   = hardwareMap.get(DcMotorEx.class, BACK_LEFT);
         backRight  = hardwareMap.get(DcMotorEx.class, BACK_RIGHT);
 
-        // Left side reversed so that positive power drives every wheel forward.
-        // If a wheel spins the wrong way when driving forward, flip its direction here.
-        frontLeft.setDirection(DcMotorSimple.Direction.REVERSE);
-        backLeft.setDirection(DcMotorSimple.Direction.REVERSE);
-        frontRight.setDirection(DcMotorSimple.Direction.FORWARD);
-        backRight.setDirection(DcMotorSimple.Direction.FORWARD);
+        frontLeft.setDirection(FRONT_LEFT_DIR);
+        backLeft.setDirection(BACK_LEFT_DIR);
+        frontRight.setDirection(FRONT_RIGHT_DIR);
+        backRight.setDirection(BACK_RIGHT_DIR);
 
         for (DcMotorEx m : new DcMotorEx[]{frontLeft, frontRight, backLeft, backRight}) {
             m.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);

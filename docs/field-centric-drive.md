@@ -41,7 +41,7 @@ Everything hardware-specific is a constant at the top of `MecanumDrive`. The Ped
 | `STRAFE_MULTIPLIER` | `1.1` | Mecanum wheels strafe slower than they drive. Raise it (1.0–1.2) if strafing is noticeably slow |
 | `MAX_TICKS_PER_SEC` | `2800` | Only for closed-loop mode, see below. Measure it |
 
-Motor directions are set in the constructor: the left side is `REVERSE` and the right side is `FORWARD`. If a wheel spins backwards when you drive forward, flip that one motor's direction there.
+Motor directions are the `FRONT_LEFT_DIR`, `FRONT_RIGHT_DIR`, `BACK_LEFT_DIR` and `BACK_RIGHT_DIR` constants in `MecanumDrive` (Pedro uses the same ones). On this robot the fronts are left `REVERSE` / right `FORWARD`, and the backs are the other way round (left `FORWARD` / right `REVERSE`), checked with **Drive Motor Test**. If a wheel spins backwards when you drive forward, flip that one constant.
 
 ### Checking a new robot
 

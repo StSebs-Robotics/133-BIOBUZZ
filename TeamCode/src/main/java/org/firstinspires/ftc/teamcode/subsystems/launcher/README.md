@@ -2,9 +2,11 @@
 
 The launcher's flywheel speed control: MPC with a Kalman load observer, on its own 100 Hz thread.
 
-Full documentation (setup, tuning recipe, API, how it works, parameters, tools) is in **[docs/launcher.md](../../../../../../../../../../docs/launcher.md)**.
+Documentation:
+- **[docs/launcher.md](../../../../../../../../../../docs/launcher.md)**: setup, tuning (SysId, Auto-Tune, by hand), API, `notifyShot()`, parameters, tools, troubleshooting.
+- **[docs/launcher-internals.md](../../../../../../../../../../docs/launcher-internals.md)**: how it works and why (model, Kalman filter, MPC/QP, shot detection, feed-forward, threading, SysId, scoring, Auto-Tune, verification).
 
-Quick start: set motor names and directions in `LauncherMPC.defaultConfig()`, run **Launcher SysId** and then **Launcher MPC Tuner** (tuning group), and in code:
+Quick start: set motor names and directions in `LauncherMPC.defaultConfig()`, run **Launcher SysId** and then **Launcher Auto-Tune** (tuning group; it saves the best values itself), and in code:
 
 ```java
 LauncherMPC launcher = new LauncherMPC(this);

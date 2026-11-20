@@ -139,6 +139,19 @@ DIP  -154 t/s  recover 166ms  then OS 0.6%
 
 ## Using it in OpModes
 
+**Ready-made:** the **Drive + Launcher** TeleOp ([`DriveLauncherTeleOp.java`](../TeamCode/src/main/java/org/firstinspires/ftc/teamcode/opmodes/DriveLauncherTeleOp.java)) has field-centric driving on gamepad 1 and the launcher on gamepad 2:
+
+| Gamepad 2 | Action |
+|---|---|
+| A | Launcher on / off (off = coast) |
+| X / Y | NEAR (1400) / FAR (1700) preset speed |
+| Dpad up / down | Speed ±50 ticks/s |
+| Dpad right / left | Speed ±10 ticks/s |
+
+It re-targets immediately if the speed changes while spinning, and rumbles gamepad 2 each time the launcher reaches speed. It caps the speed at 95% of the launcher's top speed (from SysId) and warns above 85%. The start speed, presets and steps are constants at the top of the file. There's no feeder yet; when one is added, feed only on `isReady()` and call `notifyShot()` (see below).
+
+**Writing your own:**
+
 ```java
 public class MyTeleOp extends LinearOpMode {
     @Override public void runOpMode() {
@@ -274,7 +287,7 @@ All are in [`LauncherParams.java`](../TeamCode/src/main/java/org/firstinspires/f
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `uMin` / `uMax` | 0 / 1 | Power limits. A small negative `uMin` (e.g. −0.2) lets it brake when slowing down |
+| `uMin` / `uMax` | −0.15 / 1 | Power limits. The negative `uMin` lets it brake (drive backwards) when slowing down; 0 = coast only. In simulation −0.15 got a 40% step down 90% of the way ~55 ms sooner than coasting. Keep it small: reverse power on a fast wheel draws a lot of current. Keep the motor on FLOAT, not BRAKE mode |
 | `maxDuPerSec` | 0 (off) | Extra slew limit on power, per second |
 | `periodMs` | 10 | Control period (100 Hz) |
 | `maxIters` | 40 | Solver iterations per loop. Lower if the hub's solve time is too long |

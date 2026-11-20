@@ -127,6 +127,7 @@ A box-constrained QP is exactly what this solver handles well, with no matrix fa
 
 **Notes:**
 - `qTerminal` and `horizonSec` barely matter for a first-order flywheel: the weight sweeps found the score almost flat in both.
+- **Braking:** `uMin = −0.15` by default, so the MPC can drive the motor backwards to slow down to a lower target. The model is linear in power, so negative power needs nothing special. The limit is small on purpose: reverse power on a fast wheel puts the motor's back-EMF in series with the battery, so the current is much higher than the same forward power would draw. `off()` and a target of 0 still coast (power 0). The motor stays on FLOAT: BRAKE mode shorts it at 0 power, an unmodelled deceleration the filter would misread as load.
 - `maxDuPerSec` (off by default) is applied after the QP as a plain slew limit, not inside it. Rate constraints inside the QP would make the feasible set non-box and the solver much more complex.
 
 ## Shot detection

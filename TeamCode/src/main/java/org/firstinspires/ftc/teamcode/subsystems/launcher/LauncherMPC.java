@@ -81,7 +81,9 @@ public class LauncherMPC {
     /** THE launcher. Edit this when the hardware changes. */
     public static Config defaultConfig() {
         return new Config()
-                .motor("launcher", DcMotorSimple.Direction.FORWARD)
+                // Direction not checked on the robot yet: run Launcher SysId; if it reports
+                // "flywheel never moved forward", change this to REVERSE.
+                .motor("motor3", DcMotorSimple.Direction.FORWARD)
                 // .motor("launcher2", DcMotorSimple.Direction.REVERSE)   // second flywheel motor
                 .encoder(0)
                 .name("launcher");

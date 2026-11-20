@@ -31,8 +31,8 @@ The model is `tau · dv/dt = −v + kV · power · (battery / 12 V) − kS − l
 
    ```java
    return new Config()
-           .motor("launcher", DcMotorSimple.Direction.FORWARD)
-           .motor("launcher2", DcMotorSimple.Direction.REVERSE)   // second flywheel motor, if any
+           .motor("motor3", DcMotorSimple.Direction.FORWARD)      // current launcher motor
+           .motor("motor6", DcMotorSimple.Direction.REVERSE)      // e.g. a second flywheel motor, if any
            .encoder(0)                                            // which motor has the encoder cable
            .name("launcher");                                     // params file name
    ```

@@ -34,7 +34,7 @@ Everything hardware-specific is a constant at the top of `MecanumDrive`. The Ped
 
 | Constant | Default | Meaning |
 |---|---|---|
-| `FRONT_LEFT`, `FRONT_RIGHT`, `BACK_LEFT`, `BACK_RIGHT` | `front_left_drive`, … | Motor names. They must match the Driver Station config exactly |
+| `FRONT_LEFT`, `FRONT_RIGHT`, `BACK_LEFT`, `BACK_RIGHT` | `motor1`, `motor5`, `motor0`, `motor4` | Motor names. They must match the Driver Station config exactly |
 | `IMU_NAME` | `imu` | Hub IMU name |
 | `HUB_LOGO`, `HUB_USB` | `UP`, `FORWARD` | How the Control Hub is mounted. Wrong values make heading wrong when the robot turns |
 | `STRAFE_MULTIPLIER` | `1.1` | Mecanum wheels strafe slower than they drive. Raise it (1.0–1.2) if strafing is noticeably slow |

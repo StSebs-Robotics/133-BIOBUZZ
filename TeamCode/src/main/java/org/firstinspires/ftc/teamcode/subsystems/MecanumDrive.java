@@ -32,10 +32,10 @@ public class MecanumDrive {
     // Configuration — change these to match the robot. Names must match the Driver Station
     // robot configuration exactly.
     // ---------------------------------------------------------------------------------------
-    public static final String FRONT_LEFT  = "front_left_drive";
-    public static final String FRONT_RIGHT = "front_right_drive";
-    public static final String BACK_LEFT   = "back_left_drive";
-    public static final String BACK_RIGHT  = "back_right_drive";
+    public static final String FRONT_LEFT  = "motor1";   // LF
+    public static final String FRONT_RIGHT = "motor5";   // RF
+    public static final String BACK_LEFT   = "motor0";   // LB
+    public static final String BACK_RIGHT  = "motor4";   // RB
     public static final String IMU_NAME    = "imu";
 
     /** How the Control/Expansion Hub is mounted on the robot. */

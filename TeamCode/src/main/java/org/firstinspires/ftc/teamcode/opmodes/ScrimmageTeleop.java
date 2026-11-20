@@ -29,14 +29,18 @@ public class ScrimmageTeleop extends LinearOpMode {
     private static final double TURRET_GEAR_RATIO = 10.0 / 3.0;
     private DcMotor turret;
     private DcMotor launcher;
+    private DcMotor intake;
 
     @Override
     public void runOpMode() {
         MecanumDrive drive = new MecanumDrive(hardwareMap);
-        turret = hardwareMap.get(DcMotor.class, "turret");
+        turret = hardwareMap.get(DcMotor.class, "motor2");
         turret.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         turret.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         turret.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+
+        intake= hardwareMap.get(DcMotor.class, "motor6");
+        intake.setPower(0);
 
         telemetry.addLine("Ready. Robot front should face away from the driver.");
         telemetry.update();
@@ -100,6 +104,11 @@ public class ScrimmageTeleop extends LinearOpMode {
                     ? turret.getCurrentPosition() * 360.0 / turretTicksPerRev
                     : 0.0;
 
+            if (gamepad1.dpad_down){
+                intake.setPower(0);
+            }else if (gamepad1.dpad_up){
+                intake.setPower(1);
+            }
             telemetry.addData("Mode", robotCentric ? "ROBOT-centric" : "FIELD-centric");
             telemetry.addData("Heading (deg)", "%.1f", Math.toDegrees(drive.getHeading()));
             telemetry.addData("Max power", "%.2f", drive.getMaxPower());
